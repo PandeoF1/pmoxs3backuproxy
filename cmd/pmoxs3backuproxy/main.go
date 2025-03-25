@@ -363,9 +363,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			//Seems to not be supported by minio fetching used size so we return dummy values to make all look fine
 			resp, _ := json.Marshal(Response{
 				Data: DataStoreStatus{
-					Used:    10000,
-					Avail:   10000000,
-					Total:   10000 + 10000000,
+					Used:    s3pmoxcommon.GetBucketSize(*C.Client, ds),
+					Avail:   s3pmoxcommon.GetBucketMaxSize() - s3pmoxcommon.GetBucketSize(*C.Client, ds),
+					Total:   s3pmoxcommon.GetBucketMaxSize(),
 					Counts:  0,
 					GCState: true, // todo
 				},
@@ -418,7 +418,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					 * a size field, otherwise it assumes the backup to be active
 					 * and ignores it during sync
 					 **/
-					Size:  200,
+					Size:  s3pmoxcommon.GetSnapshotSize(*C.Client, ds, snap),
 					Owner: C.AccessKeyID + "@pbs",
 				}
 				var exists bool = false
