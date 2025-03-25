@@ -13,30 +13,33 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
-func GetSnapshotSize(c minio.Client, snapshot *Snapshot) (uint64, error) {
-    var totalSize uint64
+func GetSnapshotSize(c minio.Client, snapshot Snapshot) int64 {
+    var totalSize int64
     // List all objects in the snapshot's directory and calculate the total size
     for object := range c.ListObjects(
         context.Background(), snapshot.Datastore,
         minio.ListObjectsOptions{Recursive: true, Prefix: snapshot.S3Prefix()},
     ) {
-        totalSize += uint64(object.Size)
+        totalSize += int64(object.Size)
     }
-    return totalSize, nil
+    return totalSize
 }
 
-func GetBucketSize(c minio.Client, datastore string) (uint64, error) {
+func GetBucketSize(c minio.Client, datastore string) int64 {
     // Use StatBucket to get the bucket size (used space)
-    stat, err := c.StatBucket(context.Background(), datastore)
-    if err != nil {
-        return 0, err
-    }
-    return stat.Size, nil
+    var totalSize int64
+	for object := range c.ListObjects(
+		context.Background(), datastore,
+		minio.ListObjectsOptions{Recursive: true},
+	) {
+		totalSize += int64(object.Size)
+	}
+	return totalSize
 }
 
 // This function would ideally return the max size of the bucket. 
 // Since MinIO doesn't expose this directly, you may want to configure or track this yourself.
-func GetBucketMaxSize() uint64 {
+func GetBucketMaxSize() int64 {
     // Return the max size of the bucket, which could be set via a configuration.
     // For example, if you're using a specific policy, set that size here.
     // For example, let's assume a max size of 1TB (1 TB = 1,099,511,627,776 bytes)

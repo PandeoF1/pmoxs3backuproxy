@@ -418,7 +418,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					 * a size field, otherwise it assumes the backup to be active
 					 * and ignores it during sync
 					 **/
-					Size:  s3pmoxcommon.GetSnapshotSize(*C.Client, ds, snap),
+					Size:  uint64(s3pmoxcommon.GetSnapshotSize(*C.Client, snap)),
 					Owner: C.AccessKeyID + "@pbs",
 				}
 				var exists bool = false
