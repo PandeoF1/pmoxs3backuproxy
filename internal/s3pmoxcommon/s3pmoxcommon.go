@@ -16,24 +16,30 @@ import (
 func GetSnapshotSize(c minio.Client, snapshot Snapshot) int64 {
     var totalSize int64
     // List all objects in the snapshot's directory and calculate the total size
+	s3backuplog.DebugPrint("Calculating size of snapshot %s", snapshot.S3Prefix())
     for object := range c.ListObjects(
         context.Background(), snapshot.Datastore,
         minio.ListObjectsOptions{Recursive: true, Prefix: snapshot.S3Prefix()},
     ) {
+		s3backuplog.DebugPrint("Adding %s to snapshot size", object.Key)
         totalSize += int64(object.Size)
     }
+	s3backuplog.DebugPrint("Snapshot size is %d", totalSize)
     return totalSize
 }
 
 func GetBucketSize(c minio.Client, datastore string) int64 {
     // Use StatBucket to get the bucket size (used space)
     var totalSize int64
+	s3backuplog.DebugPrint("Calculating size of bucket %s", datastore)
 	for object := range c.ListObjects(
 		context.Background(), datastore,
 		minio.ListObjectsOptions{Recursive: true},
 	) {
+		s3backuplog.DebugPrint("Adding %s to bucket size", object.Key)
 		totalSize += int64(object.Size)
 	}
+	s3backuplog.DebugPrint("Bucket size is %d", totalSize)
 	return totalSize
 }
 
