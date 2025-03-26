@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"tizbac/pmoxs3backuproxy/internal/s3backuplog"
 
 	"github.com/minio/minio-go/v7"
@@ -17,8 +18,9 @@ func GetSnapshotSize(c minio.Client, snapshot Snapshot) int64 {
     var totalSize int64
     // List all objects in the snapshot's directory and calculate the total size
 	s3backuplog.DebugPrint("Calculating size of snapshot %s", snapshot.S3Prefix())
-    for object := range c.ListObjects(
-        context.Background(), snapshot.Datastore,
+    ctx, _ := context.WithTimeout(context.Background(), time.Duration(time.Millisecond*30))
+	for object := range c.ListObjects(
+        ctx, snapshot.Datastore,
         minio.ListObjectsOptions{Recursive: true, Prefix: snapshot.S3Prefix()},
     ) {
 		s3backuplog.DebugPrint("Adding %s to snapshot size", object.Key)
@@ -28,20 +30,31 @@ func GetSnapshotSize(c minio.Client, snapshot Snapshot) int64 {
     return totalSize
 }
 
-func GetBucketSize(c minio.Client, datastore string) int64 {
-    // Use StatBucket to get the bucket size (used space)
-    var totalSize int64
-	s3backuplog.DebugPrint("Calculating size of bucket %s", datastore)
-	for object := range c.ListObjects(
-		context.Background(), datastore,
-		minio.ListObjectsOptions{Recursive: true},
-	) {
-		s3backuplog.DebugPrint("Adding %s to bucket size", object.Key)
-		totalSize += int64(object.Size)
+func GetBucketSize(client minio.Client, bucketName string) int64 {
+	var totalSize int64 = 0
+
+	opts := minio.ListObjectsOptions{
+		Recursive: true,
 	}
-	s3backuplog.DebugPrint("Bucket size is %d", totalSize)
+
+	objectsCh := client.ListObjects(context.Background(), bucketName, opts)
+
+	for object := range objectsCh {
+		if object.Err != nil {
+			s3backuplog.DebugPrint("Err: %v", object.Err)
+			continue
+		}
+		s3backuplog.DebugPrint("Bucket object: %v", object.Key)
+		s3backuplog.DebugPrint("Bucket size: %v", object.Size)
+
+		totalSize += object.Size
+	}
+
 	return totalSize
 }
+
+
+
 
 // This function would ideally return the max size of the bucket. 
 // Since MinIO doesn't expose this directly, you may want to configure or track this yourself.
