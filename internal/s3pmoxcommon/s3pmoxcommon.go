@@ -16,8 +16,14 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
+var (
+	Collect *Collector
+	once    sync.Once
+)
+
 type Collector struct {
 	mu              sync.RWMutex
+	started         bool
 	client          *minio.Client
 	snapshotSizes   map[string]int64
 	bucketSizes     map[string]int64
@@ -27,14 +33,18 @@ type Collector struct {
 }
 
 func NewSizeCollection(c *minio.Client, refreshInterval time.Duration, snapshotPrefix string) *Collector {
-	return &Collector{
-		client:          c,
-		snapshotSizes:   make(map[string]int64),
-		bucketSizes:     make(map[string]int64),
-		refreshInterval: refreshInterval,
-		snapshotPrefix:  snapshotPrefix,
-		stopChan:        make(chan struct{}),
-	}
+	once.Do(func() {
+		Collect = &Collector{
+			client:          c,
+			snapshotSizes:   make(map[string]int64),
+			bucketSizes:     make(map[string]int64),
+			refreshInterval: refreshInterval,
+			snapshotPrefix:  snapshotPrefix,
+			stopChan:        make(chan struct{}),
+		}
+		Collect.Start()
+	})
+	return Collect
 }
 
 func (sc *Collector) Start() {
