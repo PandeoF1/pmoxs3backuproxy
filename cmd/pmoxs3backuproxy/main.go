@@ -137,16 +137,13 @@ func main() {
 	if *debug {
 		s3backuplog.EnableDebug()
 	}
-	C := TicketEntry{}
 
 	S := &Server{
 		S3Endpoint:     *endpointFlag,
 		SecureFlag:     *insecureFlag,
 		TicketExpire:   *ticketExpireFlag,
 		LookupTypeFlag: *lookupTypeFlag,
-		Collector:      s3pmoxcommon.NewSizeCollection(C.Client, time.Duration(30)*time.Second, "backups/"),
 	}
-	S.Collector.Start()
 	srv := &http.Server{Addr: *bindAddress, Handler: S}
 	srv.SetKeepAlivesEnabled(true)
 	go S.ticketGC()
@@ -207,6 +204,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			auth = true
 		}
 	}
+	s.Collector = s3pmoxcommon.NewSizeCollection(C.Client, time.Duration(30)*time.Second, "backups/")
 
 	s3backuplog.DebugPrint("Request:" + r.RequestURI + " Method: " + r.Method)
 	path := strings.Split(r.RequestURI, "/")
