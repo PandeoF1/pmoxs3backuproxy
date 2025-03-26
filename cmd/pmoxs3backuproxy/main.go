@@ -137,13 +137,16 @@ func main() {
 	if *debug {
 		s3backuplog.EnableDebug()
 	}
+	C := TicketEntry{}
 
 	S := &Server{
 		S3Endpoint:     *endpointFlag,
 		SecureFlag:     *insecureFlag,
 		TicketExpire:   *ticketExpireFlag,
 		LookupTypeFlag: *lookupTypeFlag,
+		Collector:      s3pmoxcommon.NewSizeCollection(C.Client, time.Duration(30)*time.Second, "backups/"),
 	}
+	S.Collector.Start()
 	srv := &http.Server{Addr: *bindAddress, Handler: S}
 	srv.SetKeepAlivesEnabled(true)
 	go S.ticketGC()
@@ -363,8 +366,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			//Seems to not be supported by minio fetching used size so we return dummy values to make all look fine
 			resp, _ := json.Marshal(Response{
 				Data: DataStoreStatus{
-					Used:    s3pmoxcommon.GetBucketSize(*C.Client, ds),
-					Avail:   s3pmoxcommon.GetBucketMaxSize() - s3pmoxcommon.GetBucketSize(*C.Client, ds),
+					Used:    s.Collector.GetBucketSize(ds),
+					Avail:   s3pmoxcommon.GetBucketMaxSize() - s.Collector.GetBucketSize(ds),
 					Total:   s3pmoxcommon.GetBucketMaxSize(),
 					Counts:  0,
 					GCState: true, // todo
@@ -418,7 +421,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					 * a size field, otherwise it assumes the backup to be active
 					 * and ignores it during sync
 					 **/
-					Size:  uint64(s3pmoxcommon.GetSnapshotSize(*C.Client, snap)),
+					Size:  uint64(s.Collector.GetSnapshotSize(snap.S3Prefix())),
 					Owner: C.AccessKeyID + "@pbs",
 				}
 				var exists bool = false
