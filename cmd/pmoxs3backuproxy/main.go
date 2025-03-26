@@ -1200,7 +1200,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Secure:       s.SecureFlag,
 				BucketLookup: s3pmoxcommon.GetLookupType(s.LookupTypeFlag),
 			})
-			s.Collector.Client = minioClient
 			if err != nil {
 				s3backuplog.ErrorPrint("Failed to initialize S3 Object: %s", err.Error())
 				w.WriteHeader(http.StatusForbidden)
@@ -1222,6 +1221,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		te.Client = connectionList[username]
 		s.Auth.Store(ticket.Ticket, te)
+		s.Collector.Client = te.Client
 
 		respbody, _ := json.Marshal(resp)
 		s3backuplog.DebugPrint(string(respbody))
