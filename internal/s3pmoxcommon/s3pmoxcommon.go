@@ -24,7 +24,7 @@ var (
 type Collector struct {
 	mu              sync.RWMutex
 	started         bool
-	client          *minio.Client
+	Client          *minio.Client
 	snapshotSizes   map[string]int64
 	bucketSizes     map[string]int64
 	refreshInterval time.Duration
@@ -32,10 +32,10 @@ type Collector struct {
 	snapshotPrefix  string
 }
 
-func NewSizeCollection(c *minio.Client, refreshInterval time.Duration, snapshotPrefix string) *Collector {
+func NewSizeCollection(refreshInterval time.Duration, snapshotPrefix string) *Collector {
 	once.Do(func() {
 		Collect = &Collector{
-			client:          c,
+			Client:          nil,
 			snapshotSizes:   make(map[string]int64),
 			bucketSizes:     make(map[string]int64),
 			refreshInterval: refreshInterval,
@@ -55,8 +55,12 @@ func (sc *Collector) Start() {
 		for {
 			select {
 			case <-ticker.C:
-				sc.updateSizes()
-				sc.Display()
+				if sc.Client != nil {
+					sc.updateSizes()
+					sc.Display()
+				} else {
+					s3backuplog.ErrorPrint("No client found")
+				}
 			case <-sc.stopChan:
 				return
 			}
@@ -108,7 +112,7 @@ func (sc *Collector) updateSizes() {
 	ctx := context.Background()
 
 	// Collecter les tailles des buckets
-	buckets, err := sc.client.ListBuckets(ctx)
+	buckets, err := sc.Client.ListBuckets(ctx)
 	if err != nil {
 		log.Printf("Erreur lors de la récupération de la liste des buckets: %v", err)
 		return
@@ -116,7 +120,7 @@ func (sc *Collector) updateSizes() {
 
 	for _, bucket := range buckets {
 		var bucketTotalSize int64
-		objectCh := sc.client.ListObjects(ctx, bucket.Name, minio.ListObjectsOptions{
+		objectCh := sc.Client.ListObjects(ctx, bucket.Name, minio.ListObjectsOptions{
 			Recursive: true,
 		})
 
@@ -135,7 +139,7 @@ func (sc *Collector) updateSizes() {
 	// Collecter les tailles des snapshots
 	for _, bucket := range buckets {
 		var snapshotTotalSize int64
-		objectCh := sc.client.ListObjects(ctx, bucket.Name, minio.ListObjectsOptions{
+		objectCh := sc.Client.ListObjects(ctx, bucket.Name, minio.ListObjectsOptions{
 			Recursive: true,
 			Prefix:    sc.snapshotPrefix,
 		})
