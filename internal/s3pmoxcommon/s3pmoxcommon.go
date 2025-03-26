@@ -4,65 +4,144 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"tizbac/pmoxs3backuproxy/internal/s3backuplog"
 
 	"github.com/minio/minio-go/v7"
 )
 
-func GetSnapshotSize(c minio.Client, snapshot Snapshot) int64 {
-    var totalSize int64
-    // List all objects in the snapshot's directory and calculate the total size
-	s3backuplog.DebugPrint("Calculating size of snapshot %s", snapshot.S3Prefix())
-    ctx, _ := context.WithTimeout(context.Background(), time.Duration(time.Millisecond*30))
-	for object := range c.ListObjects(
-        ctx, snapshot.Datastore,
-        minio.ListObjectsOptions{Recursive: true, Prefix: snapshot.S3Prefix()},
-    ) {
-		s3backuplog.DebugPrint("Adding %s to snapshot size", object.Key)
-        totalSize += int64(object.Size)
-    }
-	s3backuplog.DebugPrint("Snapshot size is %d", totalSize)
-    return totalSize
+type Collector struct {
+	mu              sync.RWMutex
+	client          *minio.Client
+	snapshotSizes   map[string]int64
+	bucketSizes     map[string]int64
+	refreshInterval time.Duration
+	stopChan        chan struct{}
+	snapshotPrefix  string
 }
 
-func GetBucketSize(client minio.Client, bucketName string) int64 {
-	var totalSize int64 = 0
-
-	opts := minio.ListObjectsOptions{
-		Recursive: true,
+func NewSizeCollection(c *minio.Client, refreshInterval time.Duration, snapshotPrefix string) *Collector {
+	return &Collector{
+		client:          c,
+		snapshotSizes:   make(map[string]int64),
+		bucketSizes:     make(map[string]int64),
+		refreshInterval: refreshInterval,
+		snapshotPrefix:  snapshotPrefix,
+		stopChan:        make(chan struct{}),
 	}
+}
 
-	objectsCh := client.ListObjects(context.Background(), bucketName, opts)
+func (sc *Collector) Start() {
+	go func() {
+		ticker := time.NewTicker(sc.refreshInterval)
+		defer ticker.Stop()
 
-	for object := range objectsCh {
-		if object.Err != nil {
-			s3backuplog.DebugPrint("Err: %v", object.Err)
-			continue
+		for {
+			select {
+			case <-ticker.C:
+				sc.updateSizes()
+			case <-sc.stopChan:
+				return
+			}
 		}
-		s3backuplog.DebugPrint("Bucket object: %v", object.Key)
-		s3backuplog.DebugPrint("Bucket size: %v", object.Size)
-
-		totalSize += object.Size
-	}
-
-	return totalSize
+	}()
 }
 
+func (sc *Collector) Stop() {
+	close(sc.stopChan)
+}
 
+func (sc *Collector) GetBucketSize(bucketName string) int64 {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	return sc.bucketSizes[bucketName]
+}
 
+func (sc *Collector) GetSnapshotSize(snapshotPrefix string) int64 {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	return sc.snapshotSizes[snapshotPrefix]
+}
 
-// This function would ideally return the max size of the bucket. 
+func (sc *Collector) AddBucketToMonitor(bucketName string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.snapshotSizes[bucketName] = 0
+}
+
+func (sc *Collector) updateSizes() {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	// Reset les maps
+	sc.bucketSizes = make(map[string]int64)
+	sc.snapshotSizes = make(map[string]int64)
+
+	ctx := context.Background()
+
+	// Collecter les tailles des buckets
+	buckets, err := sc.client.ListBuckets(ctx)
+	if err != nil {
+		log.Printf("Erreur lors de la récupération de la liste des buckets: %v", err)
+		return
+	}
+
+	for _, bucket := range buckets {
+		var bucketTotalSize int64
+		objectCh := sc.client.ListObjects(ctx, bucket.Name, minio.ListObjectsOptions{
+			Recursive: true,
+		})
+
+		for object := range objectCh {
+			if object.Err != nil {
+				log.Printf("Erreur lors de la récupération des objets du bucket %s: %v", bucket.Name, object.Err)
+				continue
+			}
+			bucketTotalSize += object.Size
+		}
+
+		sc.bucketSizes[bucket.Name] = bucketTotalSize
+	}
+
+	// Collecter les tailles des snapshots
+	for _, bucket := range buckets {
+		var snapshotTotalSize int64
+		objectCh := sc.client.ListObjects(ctx, bucket.Name, minio.ListObjectsOptions{
+			Recursive: true,
+			Prefix:    sc.snapshotPrefix,
+		})
+
+		for object := range objectCh {
+			if object.Err != nil {
+				log.Printf("Erreur lors de la récupération des snapshots: %v", object.Err)
+				continue
+			}
+
+			// Collecter la taille totale des snapshots
+			snapshotTotalSize += object.Size
+
+			// Optionnel : collecter la taille de chaque snapshot individuellement
+			sc.snapshotSizes[object.Key] = object.Size
+		}
+
+		// Ajouter la taille totale des snapshots pour chaque bucket
+		sc.snapshotSizes[bucket.Name+"/snapshots"] = snapshotTotalSize
+	}
+}
+
+// This function would ideally return the max size of the bucket.
 // Since MinIO doesn't expose this directly, you may want to configure or track this yourself.
 func GetBucketMaxSize() int64 {
-    // Return the max size of the bucket, which could be set via a configuration.
-    // For example, if you're using a specific policy, set that size here.
-    // For example, let's assume a max size of 1TB (1 TB = 1,099,511,627,776 bytes)
-    return 1099511627776 // 1 TB in bytes
+	// Return the max size of the bucket, which could be set via a configuration.
+	// For example, if you're using a specific policy, set that size here.
+	// For example, let's assume a max size of 1TB (1 TB = 1,099,511,627,776 bytes)
+	return 1099511627776 // 1 TB in bytes
 }
 
 func ListSnapshots(c minio.Client, datastore string, returnCorrupted bool) ([]Snapshot, error) {
