@@ -46,11 +46,23 @@ func (sc *Collector) Start() {
 			select {
 			case <-ticker.C:
 				sc.updateSizes()
+				sc.Display()
 			case <-sc.stopChan:
 				return
 			}
 		}
 	}()
+}
+
+func (sc *Collector) Display() {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	for k, v := range sc.bucketSizes {
+		s3backuplog.DebugPrint("Bucket: %s size: %d", k, v)
+	}
+	for k, v := range sc.snapshotSizes {
+		s3backuplog.DebugPrint("Snapshot: %s size: %d", k, v)
+	}
 }
 
 func (sc *Collector) Stop() {
@@ -106,6 +118,7 @@ func (sc *Collector) updateSizes() {
 			bucketTotalSize += object.Size
 		}
 
+		s3backuplog.DebugPrint("Bucket: %s size: %d", bucket.Name, bucketTotalSize)
 		sc.bucketSizes[bucket.Name] = bucketTotalSize
 	}
 
@@ -124,6 +137,7 @@ func (sc *Collector) updateSizes() {
 			}
 
 			// Collecter la taille totale des snapshots
+			s3backuplog.DebugPrint("Snapshot: %s size: %d", object.Key, object.Size)
 			snapshotTotalSize += object.Size
 
 			// Optionnel : collecter la taille de chaque snapshot individuellement
