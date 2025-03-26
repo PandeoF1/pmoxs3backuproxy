@@ -204,7 +204,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			auth = true
 		}
 	}
-	s.Collector = s3pmoxcommon.NewSizeCollection(C.Client, time.Duration(30)*time.Second, "backups/")
+	s.Collector = s3pmoxcommon.NewSizeCollection(time.Duration(30)*time.Second, "backups/")
 
 	s3backuplog.DebugPrint("Request:" + r.RequestURI + " Method: " + r.Method)
 	path := strings.Split(r.RequestURI, "/")
@@ -1200,6 +1200,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Secure:       s.SecureFlag,
 				BucketLookup: s3pmoxcommon.GetLookupType(s.LookupTypeFlag),
 			})
+			s.Collector.Client = minioClient
 			if err != nil {
 				s3backuplog.ErrorPrint("Failed to initialize S3 Object: %s", err.Error())
 				w.WriteHeader(http.StatusForbidden)
