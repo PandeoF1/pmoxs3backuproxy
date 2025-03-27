@@ -202,6 +202,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cookiere := regexp.MustCompile(`PBSAuthCookie=([^;]+)`)
 	matches := cookiere.FindStringSubmatch(r.Header.Get("Cookie"))
 	auth := false
+	collector := s3pmoxcommon.GetCollector()
 
 	C := TicketEntry{}
 	if len(matches) >= 2 {
@@ -431,7 +432,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					 * a size field, otherwise it assumes the backup to be active
 					 * and ignores it during sync
 					 **/
-					Size:  200,
+					Size:  uint64(collector.GetSnapshotSize(snap.S3Prefix())),
 					Owner: C.AccessKeyID + "@pbs",
 				}
 				var exists bool = false
@@ -1218,6 +1219,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(err.Error()))
 				return
 			}
+			collector = s3pmoxcommon.NewSizeCollection(time.Duration(30)*time.Second, "/backups")
+			collector.SetClient(minioClient)
 			connectionList[username] = minioClient
 
 			_, listerr := connectionList[username].ListBuckets(context.Background())
@@ -1228,11 +1231,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(listerr.Error()))
 				return
 			}
-
 		}
 
 		te.Client = connectionList[username]
 		s.Auth.Store(ticket.Ticket, te)
+		collector.SetClient(te.Client)
 
 		respbody, _ := json.Marshal(resp)
 		s3backuplog.DebugPrint(string(respbody))
