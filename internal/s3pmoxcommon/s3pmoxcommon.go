@@ -104,6 +104,7 @@ func (sc *Collector) updateSizes() {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
+	log.Println("Updating sizes...")
 	sc.bucketSizes = make(map[string]int64)
 	sc.snapshotSizes = make(map[string]int64)
 
@@ -116,6 +117,7 @@ func (sc *Collector) updateSizes() {
 	}
 
 	for _, bucket := range buckets {
+		log.Println("Updating bucket size: ", bucket.Name)
 		var bucketTotalSize int64
 		objectCh := sc.Client.ListObjects(ctx, bucket.Name, minio.ListObjectsOptions{
 			Recursive: true,
@@ -129,7 +131,7 @@ func (sc *Collector) updateSizes() {
 			bucketTotalSize += object.Size
 		}
 
-		s3backuplog.DebugPrint("Bucket: %s size: %d", bucket.Name, bucketTotalSize)
+		log.Printf("Bucket: %s size: %d\n", bucket.Name, bucketTotalSize)
 		sc.bucketSizes[bucket.Name] = bucketTotalSize
 	}
 
