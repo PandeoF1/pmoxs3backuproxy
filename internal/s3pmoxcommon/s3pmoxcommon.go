@@ -72,7 +72,6 @@ func (sc *Collector) Start() {
 			case <-ticker.C:
 				if sc.Client != nil {
 					sc.updateSizes()
-					sc.Display()
 				} else {
 					s3backuplog.ErrorPrint("No client found")
 				}
@@ -83,16 +82,16 @@ func (sc *Collector) Start() {
 	}()
 }
 
-func (sc *Collector) Display() {
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-	for k, v := range sc.bucketSizes {
-		s3backuplog.DebugPrint("Bucket: %s size: %d", k, v)
-	}
-	for k, v := range sc.snapshotSizes {
-		s3backuplog.DebugPrint("Snapshot: %s size: %d", k, v)
-	}
-}
+// func (sc *Collector) Display() {
+// 	sc.mu.RLock()
+// 	defer sc.mu.RUnlock()
+// 	for k, v := range sc.bucketSizes {
+// 		s3backuplog.DebugPrint("Bucket: %s size: %d", k, v)
+// 	}
+// 	for k, v := range sc.snapshotSizes {
+// 		s3backuplog.DebugPrint("Snapshot: %s size: %d", k, v)
+// 	}
+// }
 
 func (sc *Collector) Stop() {
 	close(sc.stopChan)
@@ -116,13 +115,11 @@ func (sc *Collector) updateSizes() {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
-	// Reset les maps
 	sc.bucketSizes = make(map[string]int64)
 	sc.snapshotSizes = make(map[string]int64)
 
 	ctx := context.Background()
 
-	// Collecter les tailles des buckets
 	buckets, err := sc.Client.ListBuckets(ctx)
 	if err != nil {
 		log.Printf("Erreur lors de la récupération de la liste des buckets: %v", err)
@@ -147,7 +144,6 @@ func (sc *Collector) updateSizes() {
 		sc.bucketSizes[bucket.Name] = bucketTotalSize
 	}
 
-	// Collecter les tailles des snapshots
 	for _, bucket := range buckets {
 		var snapshotTotalSize int64
 		objectCh := sc.Client.ListObjects(ctx, bucket.Name, minio.ListObjectsOptions{
@@ -161,17 +157,15 @@ func (sc *Collector) updateSizes() {
 				continue
 			}
 
-			// Collecter la taille totale des snapshots
 			s3backuplog.DebugPrint("Snapshot: %s size: %d", object.Key, object.Size)
 			snapshotTotalSize += object.Size
 
-			// Optionnel : collecter la taille de chaque snapshot individuellement
 			sc.snapshotSizes[object.Key] = object.Size
 		}
 
-		// Ajouter la taille totale des snapshots pour chaque bucket
 		sc.snapshotSizes[bucket.Name+"/snapshots"] = snapshotTotalSize
 	}
+	log.Println("Updated done...")
 }
 
 // This function would ideally return the max size of the bucket.
