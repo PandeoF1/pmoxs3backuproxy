@@ -82,17 +82,6 @@ func (sc *Collector) Start() {
 	}()
 }
 
-// func (sc *Collector) Display() {
-// 	sc.mu.RLock()
-// 	defer sc.mu.RUnlock()
-// 	for k, v := range sc.bucketSizes {
-// 		s3backuplog.DebugPrint("Bucket: %s size: %d", k, v)
-// 	}
-// 	for k, v := range sc.snapshotSizes {
-// 		s3backuplog.DebugPrint("Snapshot: %s size: %d", k, v)
-// 	}
-// }
-
 func (sc *Collector) Stop() {
 	close(sc.stopChan)
 }
