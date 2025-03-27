@@ -1206,6 +1206,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(err.Error()))
 				return
 			}
+			collector = s3pmoxcommon.NewSizeCollection(time.Duration(30)*time.Second, "/backups")
+			collector.SetClient(minioClient)
 			connectionList[username] = minioClient
 
 			_, listerr := connectionList[username].ListBuckets(context.Background())
