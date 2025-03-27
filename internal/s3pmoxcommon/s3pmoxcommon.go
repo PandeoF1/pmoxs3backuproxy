@@ -19,7 +19,26 @@ import (
 var (
 	Collect *Collector
 	once    sync.Once
+	Collist *CollectorList
 )
+
+type CollectorList struct {
+	mu         sync.RWMutex
+	collectors map[string]*Collector
+}
+
+func init() {
+	log.Println("Initializing collector list")
+	Collist = &CollectorList{
+		collectors: make(map[string]*Collector),
+	}
+}
+
+func (cl *CollectorList) AddCollector(name string, c *Collector) {
+	cl.mu.Lock()
+	cl.collectors[name] = c
+	cl.mu.Unlock()
+}
 
 type Collector struct {
 	mu              sync.RWMutex
@@ -32,8 +51,22 @@ type Collector struct {
 	snapshotPrefix  string
 }
 
+func GetCollector() *Collector {
+	return Collect
+}
+
+func (sc *Collector) SetClient(c *minio.Client) {
+	sc.mu.Lock()
+	log.Println("Setting client in collector")
+	sc.Client = c
+	sc.mu.Unlock()
+}
+
 func NewSizeCollection(refreshInterval time.Duration, snapshotPrefix string) *Collector {
 	once.Do(func() {
+		log.Println("Creating new collector")
+		log.Println("Refresh interval: ", refreshInterval)
+		log.Println("Snapshot prefix: ", snapshotPrefix)
 		Collect = &Collector{
 			Client:          nil,
 			snapshotSizes:   make(map[string]int64),
@@ -49,6 +82,7 @@ func NewSizeCollection(refreshInterval time.Duration, snapshotPrefix string) *Co
 
 func (sc *Collector) Start() {
 	go func() {
+		fmt.Println("Starting collector")
 		ticker := time.NewTicker(sc.refreshInterval)
 		defer ticker.Stop()
 
@@ -86,19 +120,15 @@ func (sc *Collector) Stop() {
 func (sc *Collector) GetBucketSize(bucketName string) int64 {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
+	log.Println("Getting bucket size: ", bucketName)
 	return sc.bucketSizes[bucketName]
 }
 
 func (sc *Collector) GetSnapshotSize(snapshotPrefix string) int64 {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
+	log.Println("Getting snapshot size: ", snapshotPrefix)
 	return sc.snapshotSizes[snapshotPrefix]
-}
-
-func (sc *Collector) AddBucketToMonitor(bucketName string) {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-	sc.snapshotSizes[bucketName] = 0
 }
 
 func (sc *Collector) updateSizes() {
