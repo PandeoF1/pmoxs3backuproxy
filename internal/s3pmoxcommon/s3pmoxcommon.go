@@ -19,26 +19,7 @@ import (
 var (
 	Collect *Collector
 	once    sync.Once
-	Collist *CollectorList
 )
-
-type CollectorList struct {
-	mu         sync.RWMutex
-	collectors map[string]*Collector
-}
-
-func init() {
-	log.Println("Initializing collector list")
-	Collist = &CollectorList{
-		collectors: make(map[string]*Collector),
-	}
-}
-
-func (cl *CollectorList) AddCollector(name string, c *Collector) {
-	cl.mu.Lock()
-	cl.collectors[name] = c
-	cl.mu.Unlock()
-}
 
 type Collector struct {
 	mu              sync.RWMutex
