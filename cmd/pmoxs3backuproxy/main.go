@@ -44,6 +44,7 @@ import (
 	"time"
 	"tizbac/pmoxs3backuproxy/internal/s3backuplog"
 	"tizbac/pmoxs3backuproxy/internal/s3pmoxcommon"
+	scraperminio "tizbac/pmoxs3backuproxy/internal/scraper_minio"
 
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
@@ -53,6 +54,12 @@ import (
 
 var connectionList = make(map[string]*minio.Client)
 var writer_mux sync.RWMutex
+
+var (
+	minioAccessKey = flag.String("accesskey", "", "Minio Access Key")
+	minioSecretKey = flag.String("secretkey", "", "Minio Secret Key")
+	endpointMinio  = flag.String("endpointminio", "", "Minio Endpoint")
+)
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -361,11 +368,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if action == "status" {
 			//Seems to not be supported by minio fetching used size so we return dummy values to make all look fine
+			scraper := scraperminio.NewScraperMinio(*minioAccessKey, *minioSecretKey, *endpointMinio)
+			data, err := scraper.ScrapBucketData()
+			if err != nil {
+				s3backuplog.ErrorPrint("Failed to scrap bucket data: %s", err)
+			}
 			resp, _ := json.Marshal(Response{
 				Data: DataStoreStatus{
-					Used:    10000,
-					Avail:   10000000,
-					Total:   10000 + 10000000,
+					Used:    data.Used,
+					Avail:   data.Avail,
+					Total:   data.Total,
 					Counts:  0,
 					GCState: true, // todo
 				},
@@ -408,6 +420,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				for _, file := range snap.Files {
 					filelist = append(filelist, file.Filename)
 				}
+				fmt.Println("Snap info:", snap)
 				g := Group{
 					Count:      1,
 					BackupID:   snap.BackupID,
