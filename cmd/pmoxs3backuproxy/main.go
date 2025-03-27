@@ -195,6 +195,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cookiere := regexp.MustCompile(`PBSAuthCookie=([^;]+)`)
 	matches := cookiere.FindStringSubmatch(r.Header.Get("Cookie"))
 	auth := false
+	collector := s3pmoxcommon.GetCollector()
 
 	C := TicketEntry{}
 	if len(matches) >= 2 {
@@ -204,7 +205,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			auth = true
 		}
 	}
-	s.Collector = s3pmoxcommon.NewSizeCollection(time.Duration(30)*time.Second, "backups/")
 
 	s3backuplog.DebugPrint("Request:" + r.RequestURI + " Method: " + r.Method)
 	path := strings.Split(r.RequestURI, "/")
@@ -364,8 +364,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			//Seems to not be supported by minio fetching used size so we return dummy values to make all look fine
 			resp, _ := json.Marshal(Response{
 				Data: DataStoreStatus{
-					Used:    s.Collector.GetBucketSize(ds),
-					Avail:   s3pmoxcommon.GetBucketMaxSize() - s.Collector.GetBucketSize(ds),
+					Used:    collector.GetBucketSize(ds),
+					Avail:   s3pmoxcommon.GetBucketMaxSize() - collector.GetBucketSize(ds),
 					Total:   s3pmoxcommon.GetBucketMaxSize(),
 					Counts:  0,
 					GCState: true, // todo
@@ -419,7 +419,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					 * a size field, otherwise it assumes the backup to be active
 					 * and ignores it during sync
 					 **/
-					Size:  uint64(s.Collector.GetSnapshotSize(snap.S3Prefix())),
+					Size:  uint64(collector.GetSnapshotSize(snap.S3Prefix())),
 					Owner: C.AccessKeyID + "@pbs",
 				}
 				var exists bool = false
@@ -1216,12 +1216,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(listerr.Error()))
 				return
 			}
-
 		}
 
 		te.Client = connectionList[username]
 		s.Auth.Store(ticket.Ticket, te)
-		s.Collector.Client = te.Client
+		collector.SetClient(te.Client)
 
 		respbody, _ := json.Marshal(resp)
 		s3backuplog.DebugPrint(string(respbody))
